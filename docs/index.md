@@ -70,7 +70,8 @@ found in sapi_manifests/cnapi/template.
 | **cnapi.url**             | String | -       | The CNAPI API URL (e.g. of this instance)                           |
 | **imgapi.url**            | String | -       | The IMGAPI API URL.                                                 |
 | **dapi.changeDefaults**   | Object | -       | This provides some means to override VM allocation behaviour.       |
-| **dapi.changeDefaults.server_spread**        | String | min-ram      | How VMs are spread across CNs (one of: min-ram, max-ram, min-owner, and random)   |
+| **dapi.changeDefaults.server_spread**        | String | -            | **DEPRECATED** How VMs are spread across CNs (one of: min-ram, max-ram, min-owner, and random)   |
+| **dapi.changeDefaults.filter_docker_min_platform** | String | -      | If present, minimum platform version useful for Docker instances.        |
 | **dapi.changeDefaults.filter_headnode**      | String | true         | Whether VMs cannot allocate on the headnode.                             |
 | **dapi.changeDefaults.filter_min_resources** | String | true         | Whether CPU/RAM/disk limits are ignored when allocating.                 |
 | **dapi.changeDefaults.filter_large_servers** | String | true         | Whether large servers are reserved for larger allocations.               |
@@ -78,6 +79,12 @@ found in sapi_manifests/cnapi/template.
 | **dapi.changeDefaults.overprovision_ratio_ram**  | String | 1.0      | How much RAM will be overprovisioned per CN by default.                  |
 | **dapi.changeDefaults.overprovision_ratio_disk** | String | 1.0      | How much disk will be overprovisioned per CN by default.                 |
 | **dapi.changeDefaults.disable_override_overprovisioning** | String | false | Whether to turn off the hard setting of defaults for provisioning across CNs and packages. |
+| **dapi.changeDefaults.weight_current_platform**  | String     | 1.0  | Bias selection towards CNs with newer platforms.                         |
+| **dapi.changeDefaults.weight_next_reboot**       | String     | 0.5  | Bias selection away from CNs with nearer scheduled reboots.              |
+| **dapi.changeDefaults.weight_num_owner_zones**   | String     | 0.0  | Bias selection away from CNs with more VMs belonging to the current owner. |
+| **dapi.changeDefaults.weight_uniform_random**    | String     | 0.5  | Bias selection towards random CNs.                                       |
+| **dapi.changeDefaults.weight_unreserved_disk**   | String     | 1.0  | Bias selection towards CNs with more unreserved disk.                    |
+| **dapi.changeDefaults.weight_unreserved_ram**    | String     | 2.0  | Bias selection towards CNs with more unreserved disk.                    |
 | **dapi.allocationDescription**               | Array  | see template | The pipeline used by the allocator to decide where a VM goes across CNs. |
 
 dapi.changeDefaults is a bit of an oddball, due to limitations in the hogan.js
@@ -98,31 +105,41 @@ specialized circumstances in production.
 
 | Key                            | Type    | Default | Description                                                                  |
 | ------------------------------ | ------- | ------- | ---------------------------------------------------------------------------- |
-| **ALLOC_SERVER_SPREAD**        | String  | min-ram | How the allocator spreads VMs across CNs.                                    |
+| **ALLOC_SERVER_SPREAD**        | String  | -       | **DEPRECATED** How the allocator spreads VMs across CNs.                     |
 | **ALLOC_FILTER_HEADNODE**      | Boolean | true    | Whether the headnode should be removed from consideration during allocation. |
 | **ALLOC_FILTER_MIN_DISK**      | Boolean | false   | Whether CNs with insufficient spare disk should be removed.                  |
 | **ALLOC_FILTER_MIN_RESOURCES** | Boolean | true    | Whether CNs with insufficient spare CPU/RAM/disk should be removed.          |
 | **ALLOC_FILTER_LARGE_SERVERS** | Boolean | true    | Whether large servers should be reserved primarily for large allocations.    |
 | **ALLOC_FILTER_VM_COUNT**      | Integer | 224     | CNs with equal or more VMs than this will be removed from consideration.     |
+| **ALLOC_FILTER_DOCKER_MIN_PLATFORM**        | String  | -     | If present, minimum platform version useful for Docker instances. |
 | **ALLOC_DISABLE_OVERRIDE_OVERPROVISIONING** | Boolean | false | If true, allow packages and CNs to dictate overprovision ratios.  |
 | **ALLOC_OVERRIDE_OVERPROVISION_CPU**        | Float   | 4.0   | The ratio of CPU overprovisioning that will be hard set.          |
 | **ALLOC_OVERRIDE_OVERPROVISION_RAM**        | Float   | 1.0   | The ratio of RAM overprovisioning that will be hard set.          |
 | **ALLOC_OVERRIDE_OVERPROVISION_DISK**       | Float   | 1.0   | The ratio of disk overprovisioning that will be hard set.         |
-
+| **ALLOC_WEIGHT_CURRENT_PLATFORM**  | Float | 1.0   | Bias selection towards CNs with newer platforms.                             |
+| **ALLOC_WEIGHT_NEXT_REBOOT**       | Float | 0.5   | Bias selection away from CNs with nearer scheduled reboots.                  |
+| **ALLOC_WEIGHT_NUM_OWNER_ZONES**   | Float | 0.0   | Bias selection away from CNs with more VMs belonging to the current owner.   |
+| **ALLOC_WEIGHT_UNIFORM_RANDOM**    | Float | 0.5   | Bias selection towards random CNs.                                           |
+| **ALLOC_WEIGHT_UNRESERVED_DISK**   | Float | 1.0   | Bias selection towards CNs with more unreserved disk.                        |
+| **ALLOC_WEIGHT_UNRESERVED_RAM**    | Float | 2.0   | Bias selection towards CNs with more unreserved memory.                      |
 
 If any of the keys above aren't in the `sdc` `metadata` section, it's treated as
 if the default value was specified. Be careful when changing from the default
 values in production.
 
-ALLOC_SERVER_SPREAD is of particular interest to certain specialised production
-installs. It can have one of four values: `min-ram`, `max-ram`, `min-owner`,
-and `random`.  `min-ram` selects CNs which have the least amount of sufficient
-space for a new VM; this is desirable to keep emptier servers free for larger
-allocations.  `max-ram` selects CNs which have the *most* amount of free
-space; this can be desirable for private SDCs to give VMs the currently least
-busy servers. `min-owner` makes the allocator much more aggressive about
-balancing all VMs belonging to one user across all CNs. And `random` assigns
-randomly across CNs.
+ALLOC_SERVER_SPREAD is deprecated in favour of ALLOC_WEIGHT_\*.  It can have one
+of four values: `min-ram`, `max-ram`, `min-owner`, and `random`.  `min-ram`
+selects CNs which have the least amount of sufficient space for a new VM.
+`max-ram` selects CNs which have the *most* amount of free space.  `min-owner`
+makes the allocator much more aggressive about balancing all VMs belonging to
+one user across all CNs. And `random` assigns randomly across CNs.
+
+
+ALLOC_WEIGHT_\* attributes can have negative values, not just positive. Negative
+values have the opposite effect of negative values; e.g. a postive
+ALLOC_WEIGHT_NUM_OWNER_ZONES biases selection towards CNs with fewer VMs
+belonging to the owner of the current allocation, while a negative value would
+bias towards CNs with more such VMs.
 
 A note of warning about ALLOC_FILTER_MIN_DISK: if this is set to true, but
 ALLOC_FILTER_MIN_RESOURCES is set to false, then disk checks will be ignored.
@@ -161,15 +178,24 @@ Use it as so:
 
 # Heartbeats
 
-Each compute node is populated with services which allow the headnode to
-monitor usage and interact with the compute nodes in general. One of these is
-the "heartbeater" agent, its responsibility is to periodically emit server and
-zone information to AMQP. CNAPI is connects to AMQP and listens for these
-heartbeat messages from all servers. It uses the periodic action of these
-heartbeats to determine whether a compute node is up.
+Each server is populated with services which allow the headnode to monitor
+usage and interact with the compute nodes in general. One of these is the
+`cn-agent` agent, its responsibility is to execute tasks on the server in
+addition to periodically posting server usage and information to the headnode.
+CNAPI in turn uses these heartbeat events to determine whether a compute node
+is running.
 
-If a compute node is not setup (and therefore has no agents besides ur), CNAPI
+If a compute node is not setup (and therefore has no agents besides Ur), CNAPI
 uses the frequency of the sysinfo messages sent by Ur.
+
+Server status, stored in the `status` property on `/server` entries, is
+calculated based on the time of the last received heartbeat (corresponding to
+the `last_heartbeat` property) and can hold the values "running" or "unknown".
+These heartbeat requests originate on the `cn-agent` running on each setup
+compute node. Every time a CNAPI instance receives a heartbeat message from a
+compute node, it refreshes a timeout corresponding to 2x the heartbeat period.
+If a heartbeat is not received again before this timeout expires, the server is
+marked as having `status` "uknown".
 
 
 # Resetting to Factory Defaults
@@ -433,7 +459,6 @@ A CNAPI server record looks like the following
       "setup": true,
       "setting_up": false,
       "last_boot": "2014-04-22T07:39:50.000Z",
-      "next_reboot: "2016-03-10T10:22:35.000Z",
       "created": "2014-04-22T07:37:30.000Z",
       "vms": {
          --- compute node vm objects ---
@@ -487,7 +512,6 @@ A CNAPI server record looks like the following
 | **memory_available_bytes**           |                  |
 | **memory_provisionable_bytes**       |                  |
 | **memory_total_bytes**               |                  |
-| **next_reboot**                      | *ISODate String* | When the server is next scheduled for reboot (currently manually)          |
 | **overprovision_ratio**              |                  |
 | **overprovision_ratios**             |                  |
 | **rack_identifier**                  |                  |
@@ -669,7 +693,6 @@ for allocation must be both setup and unreserved. If a server you expected
 does not turn up in steps output, its because the server didn't meet those
 two criteria.
 
-
 ### Inputs
 
 | Param    | Type   | Description                                                         |
@@ -699,7 +722,6 @@ This call isn't cheap, so it's preferable to make fewer calls, and restrict
 the results to only the servers you're interested in by passing in the
 desired servers' UUIDs.
 
-
 ### Inputs
 
 | Param   | Type  | Description                                                         |
@@ -722,7 +744,6 @@ desired servers' UUIDs.
 
 Returns the default boot parameters.
 
-
 ### Inputs
 
 None.
@@ -742,7 +763,6 @@ Set the default boot parameters.
 
 Completely override the existing boot parameter values with the given
 payload. Any values not present in the payload will effectively be deleted.
-
 
 ### Inputs
 
@@ -771,7 +791,6 @@ Modify the default boot parameters.
 If a value is present in the default boot parameters, but no new value is
 passed in, the currently effective value will remain unchanged.
 
-
 ### Inputs
 
 | Param        | Type   | Description                           |
@@ -797,7 +816,6 @@ Returns the boot parameters for a particular server.
 Returns the platform to be booted on the next reboot in addition to what
 kernel parameters will be used to boot the server.
 
-
 ### Inputs
 
 None.
@@ -818,7 +836,6 @@ Set the boot parameters of a server.
 Completely overrides the platform and boot parameters of a server. If a
 value is not set in the new object but is in the old one, it will be
 effectively deleted when the new object replaces the old.
-
 
 ### Inputs
 
@@ -846,7 +863,6 @@ Update only the given boot configuration values.
 
 Does not overwrite any values which are not given.
 
-
 ### Inputs
 
 | Param        | Type   | Description                           |
@@ -871,7 +887,6 @@ Does not overwrite any values which are not given.
 
 Returns the details of the given task.
 
-
 ### Inputs
 
 None.
@@ -888,7 +903,6 @@ None.
 ## TaskWait (GET /tasks/:task_id/wait)
 
 Waits for a given task to return or an expiry to be reached.
-
 
 ### Inputs
 
@@ -910,7 +924,6 @@ None.
 
 Query the server for the Image's details.
 
-
 ### Inputs
 
 | Param | Type   | Description                               |
@@ -930,7 +943,6 @@ Query the server for the Image's details.
 ## Ping (GET /ping)
 
 Return CNAPI's service status details.
-
 
 ### Inputs
 
@@ -963,7 +975,6 @@ As per the [Updating Nics](#updating-nics) section above, the **nics**
 parameter must be an array of objects. Those objects must have both the
 **mac** and **nic_tags_provided** properties.
 
-
 ### Inputs
 
 | Param  | Type   | Description                                  |
@@ -984,7 +995,6 @@ parameter must be an array of objects. Those objects must have both the
 
 Returns avaiable platform images in datacenter.
 
-
 ### Inputs
 
 None.
@@ -1003,7 +1013,6 @@ None.
 ## CommandExecute (POST /servers/:server_uuid/execute)
 
 Synchronously execute a command on the target server.
-
 
 ### Inputs
 
@@ -1028,20 +1037,19 @@ Synchronously execute a command on the target server.
 
 Returns Servers present in datacenter.
 
-
 ### Inputs
 
-| Param     | Type    | Description                                                               |
-| --------- | ------- | ------------------------------------------------------------------------- |
-| uuids     | String  | Comma seperated list of UUIDs to look up                                  |
-| setup     | Boolean | Return only setup servers                                                 |
-| headnode  | Boolean | Return only headnodes                                                     |
-| reserved  | Boolean | Return only reserved servers                                              |
-| reservoir | Boolean | Return only reservoir servers                                             |
-| hostname  | String  | Return machine with given hostname                                        |
-| extras    | String  | Comma seperated values: agents, vms, memory, disk, sysinfo, capacity, all |
-| limit     | Number  | Maximum number of results to show                                         |
-| offset    | Number  | Offset the subset of results returned                                     |
+| Param     | Type    | Description                                                                                                               |
+| --------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| uuids     | String  | Comma seperated list of UUIDs to look up                                                                                  |
+| setup     | Boolean | Return only setup servers                                                                                                 |
+| headnode  | Boolean | Return only headnodes                                                                                                     |
+| reserved  | Boolean | Return only reserved servers                                                                                              |
+| reservoir | Boolean | Return only reservoir servers                                                                                             |
+| hostname  | String  | Return machine with given hostname                                                                                        |
+| extras    | String  | Comma seperated values: agents, vms, memory, disk, sysinfo, capacity, all                                                 |
+| limit     | Integer | Maximum number of results to return. It must be between 1-1000, inclusive. Defaults to 1000 (the maxmimum allowed value). |
+| offset    | Integer | Offset the subset of results returned                                                                                     |
 
 
 ### Responses
@@ -1054,7 +1062,6 @@ Returns Servers present in datacenter.
 ## ServerGet (GET /servers/:server\_uuid)
 
 Look up a single Server by UUID.
-
 
 ### Inputs
 
@@ -1072,7 +1079,6 @@ None.
 
 Set the value of a Server's attribute.
 
-
 ### Inputs
 
 | Param                | Type    | Description                                                                                                                      |
@@ -1082,6 +1088,7 @@ Set the value of a Server's attribute.
 | default_console      | String  | Console type                                                                                                                     |
 | rack_identifier      | String  | The id of the server's rack                                                                                                      |
 | comments             | String  | Any comments about the server                                                                                                    |
+| next_reboot          | String  | ISO timestamp when next reboot is scheduled for                                                                                  |
 | nics                 | Array   | List of NICs to update (see `Updating NICs` section)                                                                             |
 | reserved             | Boolean | Server is available for provisioning                                                                                             |
 | reservoir            | Boolean | Server should be considered last for provisioning                                                                                |
@@ -1105,15 +1112,13 @@ Set the value of a Server's attribute.
 
 Reboot the server.
 
-
 ### Inputs
 
+| Param        | Type   | Description |
+| ------------ | ------ | ----------- |
+| origin       | String |             |
+| creator_uuid | String |             |
 
-| Param        | Type    | Description                                                                  |
-| ------------ | ------- | ---------------------------------------------------------------------------- |
-| drain        | Boolean | Wait for server's cn-agent to be drained before sending the reboot command   |
-| origin       | String  |                                                                              |
-| creator_uuid | String  |                                                                              |
 
 ### Responses
 
@@ -1126,7 +1131,6 @@ Reboot the server.
 ## ServerFactoryReset (PUT /servers/:server\_uuid/factory-reset)
 
 Reset the server back to a factory state.
-
 
 ### Inputs
 
@@ -1145,17 +1149,16 @@ None.
 
 Initiate the server setup process for a newly started server.
 
-
 ### Inputs
 
-| Param            | Type   | Description                              |
-| ---------------- | ------ | ---------------------------------------- |
-| nics             | Object | Nic parameters to update                 |
-| postsetup_script | String | Script to run after setup has completed  |
-| hostname         | String | Hostname to set for the specified server |
-| disk_layout      | String | Disk layout type. If not specified, the disk layout will be determined by the `disklayout` default. See [disklayout(1m)](https://smartos.org/man/1m/disklayout). Optional |
-| disk_spares      | Number | Number of disk spares. Optional          |
-| disk_cache       | String | Disk cache ('true' or 'false'). Optional |
+| Param            | Type   | Description                                                  |
+| ---------------- | ------ | ------------------------------------------------------------ |
+| nics             | Object | Nic parameters to update                                     |
+| postsetup_script | String | Script to run after setup has completed                      |
+| hostname         | String | Hostname to set for the specified server                     |
+| disk_spares      | String | See `man disklayout` spares                                  |
+| disk_cache       | String | See `man disklayout` cache                                   |
+| disk_layout      | String | See `man disklayout` type      (single, mirror, raidz1, ...) |
 
 
 ### Responses
@@ -1169,7 +1172,6 @@ Initiate the server setup process for a newly started server.
 ## ServerSysinfoRefresh (POST /servers/:server_uuid/sysinfo-refresh)
 
 Fetch a given server's sysinfo values and store them in the server object.
-
 
 ### Inputs
 
@@ -1189,7 +1191,6 @@ None.
 Remove all references to given server. Does not change anything on the
 actual server.
 
-
 ### Inputs
 
 None.
@@ -1208,7 +1209,6 @@ None.
 Return details of most recent cn-agent tasks run on the compute node since
 cn-agent was started.
 
-
 ### Inputs
 
 None.
@@ -1218,8 +1218,45 @@ None.
 
 | Code | Type  | Description                 |
 | ---- | ----- | --------------------------- |
-| 200  | None  | Tasks returned successfully |
+| 200  | Ok    | Tasks returned successfully |
 | 500  | Error | Could not process request   |
+
+
+## ServerPauseCnAgent (GET /servers/:server_uuid/cn-agent/pause)
+
+Makes cn-agent stop accepting new tasks
+
+### Inputs
+
+None.
+
+
+### Responses
+
+| Code | Type  | Description               |
+| ---- | ----- | ------------------------- |
+| 204  | No    | Content on success        |
+| 500  | Error | Could not process request |
+
+
+## ServerResumeCnAgent (GET /servers/:server_uuid/cn-agent/resume)
+
+Makes cn-agent accept new tasks
+
+Note this is the default behavior and this end-point is useful
+only after a previous call to ServerPauseCnAgent
+
+### Inputs
+
+None.
+
+
+### Responses
+
+| Code | Type  | Description               |
+| ---- | ----- | ------------------------- |
+| 204  | No    | Content on success        |
+| 500  | Error | Could not process request |
 
 
 ## ServerEnsureImage (GET /servers/:server_uuid/ensure-image)
@@ -1227,7 +1264,6 @@ None.
 Assert an image is present on a compute node and ready for use in
 provisioning. If this is not the case, fetch and install the image onto the
 compute node zpool.
-
 
 ### Inputs
 
@@ -1250,7 +1286,6 @@ compute node zpool.
 Instruct server to install given agent. Pass in image uuid of package to
 install and server will download and install package.
 
-
 ### Inputs
 
 | Param        | Type   | Description              |
@@ -1262,47 +1297,10 @@ install and server will download and install package.
 
 ### Responses
 
-| Code | Type  | Description                      |
-| ---- | ----- | -------------------------------- |
-| 200  | None  | Successfully initiated the setup |
-| 500  | Error | Could not process request        |
-
-
-## ServerCnAgentPause (GET /servers/:server_uuid/cn-agent/pause)
-
-Makes cn-agent stop accepting new tasks.
-
-
-### Inputs
-
-None.
-
-
-### Responses
-
-| Code | Type  | Description                 |
-| ---- | ----- | --------------------------- |
-| 204  | None  | Request returned ok         |
-| 500  | Error | Could not process request   |
-
-
-## ServerCnAgentResume (GET /servers/:server_uuid/cn-agent/resume)
-
-Makes cn-agent accept new tasks again. Note that this is the default
-behavior and therefore it has no sense to call this method unless
-the task agent has been paused before.
-
-### Inputs
-
-None.
-
-
-### Responses
-
-| Code | Type  | Description                 |
-| ---- | ----- | --------------------------- |
-| 204  | None  | Request returned ok         |
-| 500  | Error | Could not process request   |
+| Code | Type  | Description                         |
+| ---- | ----- | ----------------------------------- |
+| 200  | Ok    | Install task initiated successfully |
+| 500  | Error | Could not process request           |
 
 
 
@@ -1313,7 +1311,6 @@ None.
 (DEPRECATED: use VMAPI instead)
 
 Query the server for a list of VMs.
-
 
 ### Inputs
 
@@ -1331,7 +1328,6 @@ None.
 ## VmLoad (GET /servers/:server_uuid/vms/:uuid)
 
 Query the server for the VM's details.
-
 
 ### Inputs
 
@@ -1353,7 +1349,6 @@ Query the server for the VM's details.
 
 Query the server for the VM's `vmadm info` output.
 
-
 ### Inputs
 
 None.
@@ -1371,7 +1366,6 @@ None.
 ## VmInfo (GET /servers/:server_uuid/vms/:uuid/vnc)
 
 Query the server for the VM's VNC host and port.
-
 
 ### Inputs
 
@@ -1391,7 +1385,6 @@ None.
 
 Modify the system parameters of the VM identified by `:uuid` on server with
 UUID `:server_uuid`.
-
 
 ### Inputs
 
@@ -1413,7 +1406,6 @@ UUID `:server_uuid`.
 
 Bulk modify VM nics
 
-
 ### Inputs
 
 | Param | Type   | Description                               |
@@ -1434,7 +1426,6 @@ Bulk modify VM nics
 
 Boot up a vm which is in the 'stopped' state.
 
-
 ### Inputs
 
 | Param | Type   | Description                               |
@@ -1454,7 +1445,6 @@ Boot up a vm which is in the 'stopped' state.
 ## VmStop (POST /servers/:server\_uuid/vms/:uuid/stop)
 
 Shut down a VM which is in the 'running' state.
-
 
 ### Inputs
 
@@ -1477,7 +1467,6 @@ Shut down a VM which is in the 'running' state.
 
 Send a signal to a given VM.
 
-
 ### Inputs
 
 | Param  | Type   | Description                                    |
@@ -1498,7 +1487,6 @@ Send a signal to a given VM.
 ## VmReboot (POST /servers/:server\_uuid/vms/:uuid/reboot)
 
 Reboot a VM which is in the 'running' state.
-
 
 ### Inputs
 
@@ -1521,7 +1509,6 @@ Reboot a VM which is in the 'running' state.
 
 Create a VM on the specified server.
 
-
 ### Inputs
 
 | Param | Type   | Description                                      |
@@ -1541,7 +1528,6 @@ Create a VM on the specified server.
 ## VmReprovision (POST /servers/:server_uuid/vms/:uuid/reprovision)
 
 Reprovision a given VM.
-
 
 ### Inputs
 
@@ -1564,7 +1550,6 @@ Reprovision a given VM.
 
 Delete the specified VM.
 
-
 ### Inputs
 
 None.
@@ -1583,7 +1568,6 @@ None.
 
 Send a docker_exec task to the given server/vm. This starts a server on the
 given server which will spawn a process with the given docker payload.
-
 
 ### Inputs
 
@@ -1609,7 +1593,6 @@ given server which will spawn a process with the given docker payload.
 Send a docker_copy task to the given server/vm. This starts a temporary
 service on the given server which will stream the the requested file.
 
-
 ### Inputs
 
 | Param   | Type   | Description                                      |
@@ -1633,7 +1616,6 @@ service on the given server which will stream the the requested file.
 
 Send a docker_stats task to the given server/vm. This starts a temporary
 service on the given server which will stream back the container stats.
-
 
 ### Inputs
 
@@ -1660,7 +1642,6 @@ Send a docker_build task to the given server/vm. This starts a temporary
 service on the given server which will allow streaming of the build context
 to the server and then runs the docker build steps.
 
-
 ### Inputs
 
 None.
@@ -1682,17 +1663,16 @@ None.
 
 Create a VM image.
 
-
 ### Inputs
 
-| Param                | Type    | Description                                      |
-| -------------------- | ------- | ------------------------------------------------ |
-| jobid                | String  | Create a new virtual machine on the given server |
-| compression          | String  | Compression to use for creating image            |
-| imgapi_url           | String  | Location of imgapi                               |
-| incremental          | Boolean | Make this an incremental image? Optional.        |
-| prepare_image_script | String  | A script run in a reboot of the VM               |
-| manifest             | Object  | Image manifest object. Require at least "uuid",  |
+| Param                | Type    | Description                                                                                                                                                             |
+| -------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| jobid                | String  | Create a new virtual machine on the given server                                                                                                                        |
+| compression          | String  | Compression to use for creating image                                                                                                                                   |
+| imgapi_url           | String  | Location of imgapi                                                                                                                                                      |
+| incremental          | Boolean | Make this an incremental image? Optional.      Default is false.                                                                                                        |
+| prepare_image_script | String  | A script run in a reboot of the VM      to prepare it for imaging.                                                                                                      |
+| manifest             | Object  | Image manifest object. Require at least "uuid",      "owner", "name" and "version" keys. See "imgadm create"      documentation for other required and optional fields. |
 
 
 ### Responses
@@ -1710,7 +1690,6 @@ Create a VM image.
 ## VmSnapshotCreate (PUT /servers/:server_uuid/vms/:uuid/snapshots)
 
 Task a snapshot of a VM.
-
 
 ### Inputs
 
@@ -1730,7 +1709,6 @@ None.
 
 Roll back to a previous snapshot of a VM.
 
-
 ### Inputs
 
 None.
@@ -1748,7 +1726,6 @@ None.
 ## VmSnapshotDestroy (DELETE /servers/:server_uuid/vms/:uuid/snapshots/:snapshot_name)
 
 Delete a VM's snapshot.
-
 
 ### Inputs
 
@@ -1771,12 +1748,18 @@ None.
 
 Returns all waitlist tickets currently active on a server. Returns the uuid of
 the newly created ticket as well as an array of all the tickets in the ticket's
-scope queue.
-
+scope queue. By default servers are returned in the chronological order of their
+creation (`created_at` timestamp). By default the responses are limited to 1000
+results. Use the `limit` and `offset` to page through results.
 
 ### Inputs
 
-None.
+| Param      | Type   | Description                              |
+| ---------- | ------ | ---------------------------------------- |
+| limit      | Number | Return at most this many results         |
+| offset     | Number | Return results starting at this position |
+| attribhute | String | Attribute to sort on                     |
+| order      | String | Sort in 'DESC' or 'ASC' order            |
 
 
 ### Responses
@@ -1790,7 +1773,6 @@ None.
 ## ServerWaitlistTicketCreate (POST /servers/:server_uuid/tickets)
 
 Create a new waitlist ticket.
-
 
 ### Inputs
 
@@ -1815,7 +1797,6 @@ Create a new waitlist ticket.
 
 Retrieve a waitlist ticket.
 
-
 ### Inputs
 
 None.
@@ -1833,7 +1814,6 @@ None.
 
 Delete a waitlist ticket.
 
-
 ### Inputs
 
 None.
@@ -1850,7 +1830,6 @@ None.
 ## ServerWaitlistTicketsDeleteAll (DELETE /servers/:server_uuid/tickets)
 
 Delete all of a server's waitlist tickets.
-
 
 ### Inputs
 
@@ -1871,7 +1850,6 @@ Delete all of a server's waitlist tickets.
 
 Wait until a waitlist ticket either expires or becomes active.
 
-
 ### Inputs
 
 None.
@@ -1888,7 +1866,6 @@ None.
 ## ServerWaitlistTicketsRelease (GET /tickets/:ticket_uuid/release)
 
 Release a currently active or queued waitlist ticket.
-
 
 ### Inputs
 
@@ -1910,7 +1887,6 @@ None.
 
 List ZFS datasets on a server.
 
-
 ### Inputs
 
 None.
@@ -1927,7 +1903,6 @@ None.
 
 Create a ZFS dataset on a server.
 
-
 ### Inputs
 
 None.
@@ -1943,7 +1918,6 @@ None.
 ## SnapshotCreate (POST /servers/:server_uuid/datasets/:dataset/snapshot)
 
 Create a ZFS snapshot of a dataset on a server.
-
 
 ### Inputs
 
@@ -1963,7 +1937,6 @@ Create a ZFS snapshot of a dataset on a server.
 
 Revert a ZFS dataset to back to a previous state captured by a snapshot.
 
-
 ### Inputs
 
 | Param | Type   | Description                            |
@@ -1982,7 +1955,6 @@ Revert a ZFS dataset to back to a previous state captured by a snapshot.
 
 List all snapshots on a dataset
 
-
 ### Inputs
 
 None.
@@ -1998,7 +1970,6 @@ None.
 ## DatasetPropertiesGetAll (GET /servers/:server_uuid/dataset-properties)
 
 Get ZFS properties across all datasets on a server.
-
 
 ### Inputs
 
@@ -2021,7 +1992,6 @@ Get ZFS properties across all datasets on a server.
 Get ZFS properties for a dataset.  The specific properties to return can be
 filtered with ?prop1=foo&prop2=bar, etc.
 
-
 ### Inputs
 
 | Param   | Type   | Description                                 |
@@ -2042,7 +2012,6 @@ filtered with ?prop1=foo&prop2=bar, etc.
 
 Set one or more properties for a ZFS dataset.
 
-
 ### Inputs
 
 | Param      | Type   | Description                              |
@@ -2061,7 +2030,6 @@ Set one or more properties for a ZFS dataset.
 
 Destroy a ZFS dataset on a server.
 
-
 ### Inputs
 
 None.
@@ -2077,7 +2045,6 @@ None.
 ## ZpoolList (GET /servers/:server_uuid/zpools)
 
 List the ZFS pools on a server.
-
 
 ### Inputs
 
